@@ -2,7 +2,7 @@
   "schema": 1,
   "id": "com.matiq.schema",
   "name": "Schema",
-  "description": "A private local workspace.",
+  "description": "Design database schemas locally. Edit DBML and explore tables and relationships.",
   "version": "0.1.0",
   "sdk": 1,
   "dataVersion": 1,
