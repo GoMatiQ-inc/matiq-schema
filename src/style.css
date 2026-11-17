@@ -19,3 +19,16 @@ dialog{border:1px solid var(--rule);border-radius:8px;width:min(720px,90vw);padd
 @media(max-width:700px){.studio{display:flex;flex-direction:column;height:auto}.editor-pane{height:300px;border-right:0}.diagram-pane{height:460px}.workspace>main{padding:12px!important}.document-bar>div:first-child{width:100%}.document-bar>.actions{width:100%}#project-name{width:100%}}
 
 .table-cell-rule{fill:none;stroke:#d8dfe9;stroke-width:1;pointer-events:none}.relationship-symbol{fill:none;stroke:#526e94;stroke-width:1.7}.relationship-optional{fill:white;stroke:#526e94;stroke-width:1.7}.relation-end{pointer-events:none}.column-name{font-size:11px}.column-type{font-size:10px}#export-preview{display:block;width:100%;max-height:380px;object-fit:contain;border:1px solid var(--rule);background:white}#schema-file{max-width:100%}.canvas-foot{flex-wrap:wrap}.canvas-foot span{font-size:10px}
+
+/* Keep document actions in the SDK top bar and give the diagram remaining height. */
+body .workspace{height:100dvh;min-height:0;display:flex;flex-direction:column}
+body .workspace>header{height:48px;padding:6px 12px;flex-shrink:0}
+body .workspace>main{padding:6px!important;min-height:0;flex:1;display:flex;flex-direction:column;overflow:hidden}
+body .workspace>footer{padding:4px 12px;flex-shrink:0}
+#page-diagram{display:flex;flex-direction:column;flex:1;min-height:0}
+.studio{height:auto;min-height:0;flex:1}
+#project-name{font-size:14px;width:190px;max-width:60%;min-width:0;padding:2px 4px}
+#save-state,.preview-label{font-size:10px}
+#parse-status{padding:3px 4px;flex-shrink:0}
+#inspector{max-height:160px;overflow:auto;flex-shrink:0}
+@media(max-width:700px){body .workspace>main{overflow:auto}#page-diagram{flex:none}.studio{min-height:760px}.preview-label{display:none}}

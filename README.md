@@ -1,4 +1,4 @@
-# Schema
+# DBSchema
 
 A draft local database design tool using the MatiQ Solutions **desktop** SDK 0.1.6. One renderer in this repository is used in the SDK standalone shell and the Solutions hosted shell. The Solutions repository holds only a prototype registry reference.
 
