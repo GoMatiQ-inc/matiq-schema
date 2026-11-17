@@ -25,7 +25,9 @@
     "@dbml/core": "12.1.0",
     "@matiq-solutions/runtime": "https://github.com/GoMatiQ-inc/matiq-solutions/releases/download/sdk-v0.1.6/matiq-solutions-runtime-0.1.6.tgz",
     "@matiq-solutions/shell": "https://github.com/GoMatiQ-inc/matiq-solutions/releases/download/sdk-v0.1.6/matiq-solutions-shell-0.1.6.tgz",
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "papaparse": "5.7.1",
+    "pdf-lib": "1.17.1"
   },
   "devDependencies": {
     "@matiq-solutions/sdk": "https://github.com/GoMatiQ-inc/matiq-solutions/releases/download/sdk-v0.1.6/matiq-solutions-sdk-0.1.6.tgz",

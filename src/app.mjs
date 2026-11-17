@@ -1,4 +1,6 @@
-import { parseSchema, importSchema, exportSchema, errorText } from './schema.mjs';
+import { parseSchema, importSchema, exportSchema, errorText, importFormats, exportFormats } from './schema.mjs';
+import { TABLE_WIDTH, HEADER_HEIGHT, ROW_HEIGHT, tableHeight, cardinality, connection } from './diagram.mjs';
+import { serializeDiagram, diagramFile, downloadFile } from './export.mjs';
 import { sample } from './sample.mjs';
 const $ = selector => document.querySelector(selector);
 const source = $('#source'), canvas = $('#diagram'), status = $('#parse-status');
@@ -28,8 +30,8 @@ function layout() {
   let y = 45;
   for (let i = 0; i < model.tables.length; i += 3) {
     const row = model.tables.slice(i,i+3);
-    row.forEach((t,j) => positions[t.key] = {x:40+j*(250+gap),y});
-    y += Math.max(...row.map(t=>46+t.fields.length*26)) + gap;
+    row.forEach((t,j) => positions[t.key] = {x:40+j*(TABLE_WIDTH+gap),y});
+    y += Math.max(...row.map(t=>tableHeight(t))) + gap;
   }
 }
 function inspect(key) {
@@ -48,36 +50,39 @@ function render() {
   const q = $('#search').value.trim().toLowerCase();
   let width = 800, height = 500;
   for (const t of model.tables) {
-    if (!positions[t.key]) positions[t.key] = {x:40+(model.tables.indexOf(t)%3)*345,y:50+Math.floor(model.tables.indexOf(t)/3)*300};
-    width=Math.max(width,positions[t.key].x+300); height=Math.max(height,positions[t.key].y+90+t.fields.length*26);
+    if (!positions[t.key]) positions[t.key] = {x:40+(model.tables.indexOf(t)%3)*375,y:50+Math.floor(model.tables.indexOf(t)/3)*300};
+    width=Math.max(width,positions[t.key].x+TABLE_WIDTH+65); height=Math.max(height,positions[t.key].y+90+t.fields.length*26);
   }
   canvas.setAttribute('viewBox',`0 0 ${width} ${height}`);
   canvas.setAttribute('width',Math.round(width*zoom));canvas.setAttribute('height',Math.round(height*zoom));
   $('#zoom-label').value = `${Math.round(zoom*100)}%`;
+  const ends=[];
+  const portGroups=new Map(),portOffsets=new Map();
+  for(const ref of model.refs)for(const endpoint of ref.endpoints){const key=endpoint.key+'.'+endpoint.fieldNames[0];if(!portGroups.has(key))portGroups.set(key,[]);portGroups.get(key).push(endpoint);}
+  for(const group of portGroups.values())group.forEach((endpoint,i)=>portOffsets.set(endpoint,{offset:group.length===1?0:-8+i*16/(group.length-1),half:group.length===1?6:3.5}));
   for (const r of model.refs) {
-    const [a,b] = r.endpoints, pa=positions[a.key], pb=positions[b.key];
-    if (!pa || !pb) continue;
-    const ta=model.tables.find(t=>t.key===a.key),tb=model.tables.find(t=>t.key===b.key);
-    const ax=pa.x+250,ay=pa.y+48+Math.max(0,ta.fields.findIndex(f=>f.name===a.fieldNames[0]))*26;
-    const bx=pb.x,by=pb.y+48+Math.max(0,tb.fields.findIndex(f=>f.name===b.fieldNames[0]))*26;
-    const mid=(ax+bx)/2;
-    const path=svg('path',{d:`M ${ax} ${ay} C ${mid} ${ay}, ${mid} ${by}, ${bx} ${by}`,class:'relation'});
-    svg('title',{},`${a.tableName}.${a.fieldNames.join(', ')} (${a.relation}) → ${b.tableName}.${b.fieldNames.join(', ')} (${b.relation})`,path);
-    svg('text',{x:ax+6,y:ay-5,class:'relation-label'},a.relation);
-    svg('text',{x:bx-12,y:by-5,class:'relation-label'},b.relation);
+    const [a,b] = r.endpoints;
+    if(!positions[a.key]||!positions[b.key])continue;
+    const route=connection(a,b,model.tables,positions,portOffsets.get(a).offset,portOffsets.get(b).offset);
+    route.first.half=portOffsets.get(a).half;route.last.half=portOffsets.get(b).half;
+    const path=svg('path',{d:route.path,class:'relation'});
+    svg('title',{},`${a.tableName}.${a.fieldNames.join(', ')} (${cardinality(a.relation).label}) → ${b.tableName}.${b.fieldNames.join(', ')} (${cardinality(b.relation).label})`,path);
+    ends.push([route.first,a.relation],[route.last,b.relation]);
   }
   for (const t of model.tables) {
-    const p=positions[t.key], h=40+t.fields.length*26;
+    const p=positions[t.key], h=tableHeight(t);
     const g=svg('g',{transform:`translate(${p.x},${p.y})`,class:`table-card${selected===t.key?' selected':''}${q&&!t.key.toLowerCase().includes(q)?' dimmed':''}`,tabindex:0,role:'button','aria-label':`Table ${t.name}, ${t.fields.length} columns`});
-    svg('rect',{width:250,height:h,rx:6,class:'table-body'},undefined,g);
-    const head=svg('rect',{width:250,height:34,rx:6,class:'table-head'},undefined,g);
+    svg('rect',{width:TABLE_WIDTH,height:h,rx:6,class:'table-body'},undefined,g);
+    const head=svg('rect',{width:TABLE_WIDTH,height:HEADER_HEIGHT,rx:6,class:'table-head'},undefined,g);
     svg('text',{x:12,y:22,class:'table-name'},t.schema==='public'?t.name:t.key,g);
     t.fields.forEach((f,i)=>{
-      const y=53+i*26;
+      const y=52+i*ROW_HEIGHT;
+      svg('path',{d:`M 0 ${HEADER_HEIGHT+i*ROW_HEIGHT} H ${TABLE_WIDTH}`,class:'table-cell-rule'},undefined,g);
       svg('text',{x:10,y,class:'table-key'},f.pk?'◆':'',g);
-      svg('text',{x:28,y,class:'column-name'},f.name.length>23?f.name.slice(0,22)+'…':f.name,g);
-      if(preferences.types) svg('text',{x:240,y,'text-anchor':'end',class:'column-type'},f.type.type_name,g);
+      svg('text',{x:28,y,class:'column-name'},f.name.length>21?f.name.slice(0,20)+'…':f.name,g);
+      if(preferences.types) svg('text',{x:TABLE_WIDTH-10,y,'text-anchor':'end',class:'column-type'},f.type.type_name,g);
     });
+    svg('path',{d:`M 22 ${HEADER_HEIGHT} V ${h}${preferences.types?` M 174 ${HEADER_HEIGHT} V ${h}`:''}`,class:'table-cell-rule'},undefined,g);
     g.onclick=()=>inspect(t.key);
     g.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();inspect(t.key);}};
     head.onpointerdown=e=>{
@@ -91,6 +96,15 @@ function render() {
       head.onpointerup=()=>{head.onpointermove=null;markDirty();render();};
     };
   }
+  for(const [end,relation] of ends)drawEndpoint(end,relation);
+}
+function drawEndpoint(end,relation) {
+  const {many,optional,label}=cardinality(relation),{x,y,direction:d,half=6}=end;
+  const g=svg('g',{class:'relation-end','aria-label':label,'data-cardinality':relation});
+  svg('title',{},label,g);
+  svg('path',{d:many?`M ${x} ${y-half} L ${x+12*d} ${y} L ${x} ${y+half}`:`M ${x+7*d} ${y-half} V ${y+half}`,class:'relationship-symbol'},undefined,g);
+  if(optional)svg('circle',{cx:x+22*d,cy:y,r:half===6?4:2.8,class:'relationship-optional'},undefined,g);
+  else svg('path',{d:`M ${x+21*d} ${y-half} V ${y+half}`,class:'relationship-symbol'},undefined,g);
 }
 function compile() {
   $('#line-numbers').textContent=source.value.split('\n').map((_,i)=>i+1).join('\n');
@@ -113,8 +127,9 @@ function setZoom(value){zoom=Math.max(.3,Math.min(2,value));render();}
 $('#zoom-in').onclick=()=>setZoom(zoom+.1);$('#zoom-out').onclick=()=>setZoom(zoom-.1);
 $('#fit').onclick=()=>{
   if (!model) return;
-  const max=Math.max(800,...model.tables.map(t=>positions[t.key].x+300));
-  setZoom($('#diagram-scroll').clientWidth/max);
+  const max=Math.max(800,...model.tables.map(t=>positions[t.key].x+TABLE_WIDTH+65));
+  const maxHeight=Math.max(500,...model.tables.map(t=>positions[t.key].y+90+t.fields.length*26));
+  setZoom(Math.min($('#diagram-scroll').clientWidth/max,$('#diagram-scroll').clientHeight/maxHeight));
 };
 $('#close-inspector').onclick=()=>{selected=null;$('#inspector').hidden=true;$('#selection').textContent='Select a table to inspect it';render();};
 $('#syntax').onclick=()=>$('#help').showModal();
@@ -139,29 +154,77 @@ async function saveProject() {
 };
 $('#save').onclick=saveProject;
 $('#save-preferences').onclick=saveProject;
+let importedName = 'imported_table';
 function refreshExport() {
-  try {$('#exchange-text').value=exportSchema(source.value,$('#format').value);$('#exchange-error').textContent='';$('#download').disabled=false;}
-  catch(error){$('#exchange-error').textContent=errorText(error);$('#download').disabled=true;}
+  const format=$('#format').value,image=['png','pdf','svg'].includes(format);
+  $('#exchange-text').hidden=image;$('#text-label').hidden=image;$('#export-preview').hidden=!image;
+  try {
+    // Never label a stale diagram as an export of invalid editor text.
+    parseSchema(source.value);
+    if(image)compile();
+    if(image)$('#export-preview').src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(serializeDiagram(canvas).text);
+    else $('#exchange-text').value=exportSchema(source.value,format);
+    $('#format-help').textContent=image?'Full diagram, including tables outside the current viewport. Search dimming is excluded.':format==='dbml'?'Original DBML source, ready to save as a local file.':'SQL preserves the types you declared. Check that they are supported by the selected database (for example, PostgreSQL uuid is not a MySQL type).';
+    $('#exchange-error').textContent='';$('#download').disabled=false;
+  } catch(error){$('#exchange-error').textContent=errorText(error);$('#download').disabled=true;$('#export-preview').hidden=true;}
+}
+function formatHelp() {
+  $('#format-help').textContent=$('#format').value==='csv'?'CSV headers become text columns. Data rows are not imported; types and relationships can be defined in DBML.':'Paste schema text or choose a local file, then review it before importing.';
 }
 function exchange(nextMode) {
+  clearTimeout(debounce);compile();
   mode=nextMode;$('#exchange-title').textContent=mode==='import'?'Import schema':'Export schema';
-  $('#apply-import').hidden=mode!=='import';$('#download').hidden=mode!=='export';
-  $('#exchange-text').readOnly=mode==='export';$('#exchange-error').textContent='';
-  if(mode==='export')refreshExport();else $('#exchange-text').value='';
+  $('#format').replaceChildren(...(mode==='import'?importFormats:exportFormats).map(([id,label])=>{const option=document.createElement('option');option.value=id;option.textContent=label;return option;}));
+  $('#apply-import').hidden=mode!=='import';$('#download').hidden=mode!=='export';$('#file-import').hidden=mode!=='import';
+  $('#exchange-text').readOnly=mode==='export';$('#exchange-error').textContent='';$('#schema-file').value='';
+  $('#exchange-text').hidden=false;$('#text-label').hidden=false;$('#export-preview').hidden=true;
+  if(mode==='export')refreshExport();else {$('#exchange-text').value='';formatHelp();}
+  $('#schema-file').value='';
   $('#exchange').showModal();
 }
 $('#import').onclick=()=>exchange('import');$('#export').onclick=()=>exchange('export');
-$('#format').onchange=()=>{if(mode==='export')refreshExport();};
+$('#format').onchange=()=>{if(mode==='export')refreshExport();else formatHelp();};
+$('#schema-file').onchange=async()=>{
+  const file=$('#schema-file').files[0];if(!file)return;
+  try {
+    if(file.size>10*1024*1024)throw Error('Choose a schema file smaller than 10 MiB.');
+    $('#exchange-text').value=await file.text();importedName=file.name.replace(/\.[^.]+$/,'')||'imported_table';
+    const extension=file.name.split('.').at(-1).toLowerCase();
+    if(['dbml','csv'].includes(extension))$('#format').value=extension;
+    if(extension==='rb')$('#format').value='schemarb';
+    $('#exchange-error').textContent='';formatHelp();
+  }catch(error){$('#exchange-error').textContent='File could not be read: '+error.message;}
+};
+$('#schema-file').onchange=async()=>{
+  const file=$('#schema-file').files[0];if(!file)return;
+  try {
+    if(file.size>10*1024*1024)throw Error('Keep schema imports under 10 MiB. Split the schema into smaller files.');
+    const text=await file.text();
+    importedName=file.name.replace(/\.[^.]+$/,'')||'imported_table';
+    const ext=file.name.split('.').at(-1).toLowerCase();
+    if(ext==='csv'||ext==='dbml')$('#format').value=ext;
+    else if(ext==='rb')$('#format').value='schemarb';
+    else if(ext==='sql'&&!['postgres','mysql','mssql','oracle','snowflake'].includes($('#format').value))$('#format').value='postgres';
+    $('#exchange-text').value=text;$('#exchange-error').textContent='';formatHelp();
+  }catch(error){$('#exchange-error').textContent='File could not be read: '+error.message;}
+};
 $('#apply-import').onclick=()=>{
   try {
-    const text=importSchema($('#exchange-text').value,$('#format').value);
+    const text=importSchema($('#exchange-text').value,$('#format').value,importedName);
     if(dirty&&!confirm('Replace unsaved schema edits with this import?'))return;
     source.value=text;positions={};selected=null;$('#inspector').hidden=true;compile();markDirty();$('#exchange').close();
   }catch(error){$('#exchange-error').textContent='Import failed: '+errorText(error);}
 };
-$('#download').onclick=()=>{
-  const blob=new Blob([$('#exchange-text').value],{type:'text/plain;charset=utf-8'}),url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download=($('#project-name').value||'schema').replace(/[^a-z0-9_-]/gi,'-')+($('#format').value==='dbml'?'.dbml':'.sql');a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+$('#download').onclick=async()=>{
+  const format=$('#format').value;$('#download').disabled=true;
+  try {
+    const image=['png','pdf','svg'].includes(format);
+    const blob=image?await diagramFile(canvas,format):new Blob([exportSchema(source.value,format)],{type:'text/plain;charset=utf-8'});
+    const filename=($('#project-name').value||'schema').replace(/[^a-z0-9_-]/gi,'-');
+    downloadFile(blob,filename+'.'+(image?format:format==='dbml'?'dbml':'sql'));
+    $('#exchange-error').textContent='';
+  }catch(error){$('#exchange-error').textContent='Export failed: '+error.message;}
+  finally{$('#download').disabled=false;}
 };
 window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
 (async()=>{

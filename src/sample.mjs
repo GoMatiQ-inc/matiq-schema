@@ -35,7 +35,7 @@ Table projects {
 Table tasks {
   id uuid [pk]
   project_id uuid [not null, ref: > projects.id]
-  assigned_to uuid [ref: > users.id]
+  assigned_to uuid [ref: >? users.id]
   title varchar(255) [not null]
   status varchar(32)
 }

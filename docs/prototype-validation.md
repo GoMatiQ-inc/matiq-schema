@@ -12,4 +12,15 @@ The actual renderer was reviewed through private HTTPS in Chrome in standalone a
 
 ## Limits
 
-This is browser prototype evidence, not native desktop qualification. Native persistence, workers/lifecycle, installers, signing/notarization, signed package installation, independent updates and OS restart behavior are untested and blocked on explicit design approval. Large-schema performance, image export and additional SQL dialects are not qualified. The source parser bundle is about 15 MiB; production optimization is deferred. The pinned SDK/runtime dependency audit reports moderate transitive advisories; release qualification must assess them without silently changing the approved SDK. No production application or external diagram was modified.
+This is browser prototype evidence, not native desktop qualification. Native persistence, workers/lifecycle, installers, signing/notarization, signed package installation, independent updates and OS restart behavior are untested and blocked on explicit design approval. Large-schema performance remains unqualified; later export and dialect checks are recorded below. The source parser bundle is about 15 MiB; production optimization is deferred. The pinned SDK/runtime dependency audit reports moderate transitive advisories; release qualification must assess them without silently changing the approved SDK. No production application or external diagram was modified.
+
+
+## Relationship and import/export revision
+
+The owner requested rigid connectors, relationship-end symbols, cell dividers and broader import/export. The draft now uses field-attached horizontal/vertical paths with routes around table rectangles. Endpoint symbols cover one, many, zero-or-one and zero-or-many; shared-field symbols use separate ports. Tables have field rows and key/name/type column dividers. Fit accounts for both canvas dimensions.
+
+The import dialog reads local files or pasted text: DBML, PostgreSQL, MySQL, SQL Server, Oracle, Snowflake, Rails schema.rb and CSV. CSV headers become text columns; no data rows or foreign keys are invented. Export supports DBML and PostgreSQL/MySQL/SQL Server/Oracle SQL, plus full-diagram PNG, PDF and SVG. PDF contains a raster diagram. SQL preserves declared types; database-specific type compatibility requires review rather than silent translation.
+
+Focused tests cover supported schema conversions, invalid/duplicate CSV headers, relationship cardinalities, field attachments, self-references and obstacle routing. Chrome checks include actual local CSV file selection/import, all fourteen sample endpoint symbols, cell rules, PNG/PDF/SVG downloads, a full exported PNG visual inspection, plus hosted PNG and PDF downloads. The one-to-one/many-to-many browser fixture produced distinct endpoint cardinalities (1, 1, *, *). Browser event notification timed out for one successful PNG download; file bytes and dimensions were independently verified. Native desktop file dialogs and packages remain unqualified and approval remains draft.
+
+Reference study used the owner's open dbdiagram without editing its schema, plus official DBML relationship documentation and dbdiagram editing/export and CSV import documentation. Full feature parity, database connections, collaborative cloud sharing, large-schema performance, and every SQL dialect grammar are not claimed.
