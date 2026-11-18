@@ -42,6 +42,7 @@ const root=path.join(__dirname,'..');
   assert.equal(await page.locator('#exchange').isVisible(),false,'Export must not open an extra dialog');
   await assert.rejects(page.evaluate(()=>window.tool.request('export',{filename:'../escape.dbml',bytes:new Uint8Array([1])})),/filename/);
   await nav.getByRole('button',{name:'Save project',exact:true}).click();await page.locator('#save-state').filter({hasText:'Saved on this device'}).waitFor();
+  if(process.env.DBSCHEMA_SCREENSHOT&&nav===page)await page.screenshot({path:process.env.DBSCHEMA_SCREENSHOT});
  }
  try{
   let page=await launch();await workflow(page);await page.getByRole('button',{name:'Settings',exact:true}).click();await page.locator('#show-grid').uncheck();await page.locator('#save-preferences').click();await page.getByRole('button',{name:'Diagram',exact:true}).click();await close();
