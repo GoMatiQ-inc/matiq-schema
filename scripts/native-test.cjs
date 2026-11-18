@@ -12,6 +12,7 @@ const root=path.join(__dirname,'..');
  async function launch(){await fs.writeFile(configPath,JSON.stringify(config));app=await electron.launch({executablePath:require('electron'),args:[path.join(__dirname,'native-entry.cjs')],env:{...process.env,DBSCHEMA_TEST_CONFIG:configPath},timeout:30000});owned=captureTree(capture(app.process()));const page=await app.firstWindow();page.on('console',message=>console.log('Renderer:',message.text()));page.on('pageerror',error=>console.error('Renderer error:',error.message));console.log('Renderer ready:',await page.evaluate(()=>({bridge:typeof window.tool,native:window.tool?.native,ready:document.readyState})));page.setDefaultTimeout(10000);if(!config.suite)await page.locator('#counts').filter({hasText:'tables'}).waitFor();return page;}
  async function close(force=false){if(!app)return;owned=captureTree(capture(app.process()));if(force){const exited=app.waitForEvent('close');app.process().kill('SIGKILL');await exited;}else await app.close();app=null;for(const child of owned)await verifyStopped(child);owned=[];}
  async function workflow(page,nav=page){
+  for(const name of await fs.readdir(config.downloads))await fs.rm(path.join(config.downloads,name));
   await page.locator('#counts').filter({hasText:'tables'}).waitFor();await page.locator('#source').fill(source);await page.getByText('2 tables · 1 relationships',{exact:true}).waitFor();
   assert.equal(await page.locator('#source').getAttribute('aria-invalid'),'false');
   await page.getByRole('button',{name:'Table users, 1 columns',exact:true}).press('Enter');
@@ -38,6 +39,8 @@ const root=path.join(__dirname,'..');
   assert.equal(await fs.readFile(path.join(config.downloads,'Native-qualification.dbml'),'utf8'),source);
   assert.match(await fs.readFile(path.join(config.downloads,'Native-qualification.svg'),'utf8'),/<svg/);
   const png=await fs.readFile(path.join(config.downloads,'Native-qualification.png'));assert.equal(png.subarray(1,4).toString(),'PNG');assert.match((await fs.readFile(path.join(config.downloads,'Native-qualification.pdf'))).subarray(0,8).toString(),/%PDF/);
+  assert.equal(await page.locator('#exchange').isVisible(),false,'Export must not open an extra dialog');
+  await assert.rejects(page.evaluate(()=>window.tool.request('export',{filename:'../escape.dbml',bytes:new Uint8Array([1])})),/filename/);
   await nav.getByRole('button',{name:'Save project',exact:true}).click();await page.locator('#save-state').filter({hasText:'Saved on this device'}).waitFor();
  }
  try{

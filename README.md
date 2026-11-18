@@ -1,6 +1,6 @@
 # DBSchema
 
-A draft local database design tool using the MatiQ Solutions **desktop** SDK 0.1.6. One renderer in this repository is used in the SDK standalone shell and the Solutions hosted shell. The Solutions repository holds only a prototype registry reference.
+A local database design tool using the MatiQ Solutions **desktop** SDK 0.1.6. One renderer in this repository is used in the SDK standalone shell and the Solutions hosted shell. The Solutions repository holds catalog and prototype registry references only.
 
 ## Prototype
 
@@ -12,9 +12,9 @@ Try editing DBML, invalid syntax, table search, dragging headers, zoom/Fit, Auto
 
 ## Approval boundary
 
-`prototype/approval.json` remains draft. Explicit owner approval of both shells is required before native implementation, packaging, signing, installation or release. `npm start` and package commands intentionally fail while approval is missing. Native adapter and preload files remain the generated SDK scaffold; they do not yet implement this renderer's project contract.
+The owner explicitly approved implementation on 2026-11-18. The SDK approval record preserves that instruction and the reviewed source digest. `npm start` and packaging still check that record against the current renderer and shells.
 
-This prototype is not a production release. Native files and folders, multi-project storage, OS lifecycle/unsaved-work protection, signed marketplace packages, independent updates and restart/install qualification remain pending. The suite's existing install/update controls are simulations. Preview saves share one slot per browser origin. Browser file import and export are real local operations; native export dialogs are not qualified. SQL export preserves declared types rather than translating database-specific types.
+The reusable browser prototype continues to simulate desktop persistence and marketplace operations. Native project saves, Downloads exports and lifecycle behavior are implemented in the adapter and tested separately. SQL export preserves declared types rather than translating database-specific types. Multi-project library management is outside this first release.
 
 See `docs/prototype-validation.md` for evidence and limits.
 
