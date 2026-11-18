@@ -1,11 +1,14 @@
-import { parseSchema, importSchema, exportSchema, errorText, importFormats, exportFormats } from './schema.mjs';
+import { parseSchema, importSchema, exportSchema, errorText, diagnostics, importFormats, exportFormats } from './schema.mjs';
 import { TABLE_WIDTH, HEADER_HEIGHT, ROW_HEIGHT, tableHeight, cardinality, connection } from './diagram.mjs';
 import { serializeDiagram, diagramFile, downloadFile } from './export.mjs';
 import { sample } from './sample.mjs';
 const $ = selector => document.querySelector(selector);
 const source = $('#source'), canvas = $('#diagram'), status = $('#parse-status');
-let model, positions = {}, selected = null, zoom = 1, dirty = false, mode = 'import';
+let model, positions = {}, bends = {}, selectedRef = null, selected = null, zoom = 1, dirty = false, mode = 'import';
 let preferences = {spacing:'comfortable', types:true, grid:true};
+const savedLabel=window.tool.native?'Saved on this device':'Saved in this browser';
+document.body.dataset.dirty='false';
+if(window.tool.native){$('.preview-label').hidden=true;$('#page-projects .caption').textContent='Your current project is saved locally. Export DBML to keep named backups or switch schemas with Import.';$('#page-settings p:last-child').textContent='Schema editing and file processing stay on your device. No model download is needed.';}
 const SVG = 'http://www.w3.org/2000/svg';
 function svg(tag, attrs, text, parent = canvas) {
   const el = document.createElementNS(SVG, tag);
@@ -13,7 +16,7 @@ function svg(tag, attrs, text, parent = canvas) {
   if (text !== undefined) el.textContent = text;
   parent.append(el); return el;
 }
-function markDirty() { dirty = true; $('#save-state').textContent = 'Unsaved changes'; $('#settings-state').textContent = 'Unsaved changes'; }
+function markDirty() { dirty = true;document.body.dataset.dirty='true'; $('#save-state').textContent = 'Unsaved changes'; $('#settings-state').textContent = 'Unsaved changes'; }
 function navigate(page) {
   for (const id of ['diagram','projects','settings']) $('#page-'+id).hidden = page !== id;
   for (const b of document.querySelectorAll('.sidebar nav button')) {
@@ -34,10 +37,25 @@ function layout() {
     y += Math.max(...row.map(t=>tableHeight(t))) + gap;
   }
 }
+function reveal(range) {
+  if(!range || status.className==='error')return;
+  source.focus();source.setSelectionRange(range.start.offset,range.end.offset);
+  source.scrollTop=Math.max(0,(range.start.line-3)*22);syncEditorScroll();
+}
+const refKey = ref => ref.endpoints.map(e=>e.key+'.'+e.fieldNames.join(',')+':'+e.relation).join('|');
+function drag(event, move) {
+  event.preventDefault();event.stopPropagation();markDirty();canvas.setPointerCapture(event.pointerId);
+  const rect=canvas.getBoundingClientRect(), box={width:canvas.viewBox.baseVal.width,height:canvas.viewBox.baseVal.height};
+  canvas.onpointermove=e=>{move({x:(e.clientX-event.clientX)*box.width/rect.width,y:(e.clientY-event.clientY)*box.height/rect.height});render();};
+  const finish=()=>{canvas.onpointermove=null;canvas.onpointerup=null;canvas.onpointercancel=null;markDirty();};
+  canvas.onpointerup=finish;canvas.onpointercancel=finish;
+}
 function inspect(key) {
+  selectedRef=null;
   selected = key; const t = model.tables.find(t=>t.key===key);
   $('#inspector').hidden = !t;
   if (t) {
+    reveal(t.sourceRange);
     $('#table-title').textContent = t.key;
     $('#table-detail').textContent = t.fields.map(f=>`${f.pk?'PK · ':''}${f.name}  ${f.type.type_name}${f.not_null?' · required':''}${f.unique?' · unique':''}`).join('\n') + (t.note ? '\n\n'+t.note : '');
     $('#selection').textContent = `${t.name} · ${t.fields.length} columns`;
@@ -53,6 +71,7 @@ function render() {
     if (!positions[t.key]) positions[t.key] = {x:40+(model.tables.indexOf(t)%3)*375,y:50+Math.floor(model.tables.indexOf(t)/3)*300};
     width=Math.max(width,positions[t.key].x+TABLE_WIDTH+65); height=Math.max(height,positions[t.key].y+90+t.fields.length*26);
   }
+  for(const bend of Object.values(bends)){if(bend.axis==='x')width=Math.max(width,bend.value+40);else height=Math.max(height,bend.value+40);}
   canvas.setAttribute('viewBox',`0 0 ${width} ${height}`);
   canvas.setAttribute('width',Math.round(width*zoom));canvas.setAttribute('height',Math.round(height*zoom));
   $('#zoom-label').value = `${Math.round(zoom*100)}%`;
@@ -63,9 +82,23 @@ function render() {
   for (const r of model.refs) {
     const [a,b] = r.endpoints;
     if(!positions[a.key]||!positions[b.key])continue;
-    const route=connection(a,b,model.tables,positions,portOffsets.get(a).offset,portOffsets.get(b).offset);
+    const route=connection(a,b,model.tables,positions,portOffsets.get(a).offset,portOffsets.get(b).offset,bends[refKey(r)]);
     route.first.half=portOffsets.get(a).half;route.last.half=portOffsets.get(b).half;
-    const path=svg('path',{d:route.path,class:'relation'});
+    const key=refKey(r),active=selectedRef===key;
+    const path=svg('path',{d:route.path,class:'relation'+(active?' selected':'')});
+    const hit=svg('path',{d:route.path,class:'relation-hit',tabindex:0,role:'button','aria-label':`Relationship ${a.tableName}.${a.fieldNames.join(',')} to ${b.tableName}.${b.fieldNames.join(',')}`});
+    const choose=()=>{selectedRef=key;selected=null;$('#inspector').hidden=true;$('#selection').textContent='Drag a line handle to adjust its route';reveal(r.sourceRange);render();};
+    hit.onclick=choose;hit.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();choose();}};
+    if(active){
+      const candidates=route.points.slice(2,-1).map((p,i)=>({a:route.points[i+1],b:p})).filter(s=>s.a.x!==s.b.x||s.a.y!==s.b.y);
+      const segment=candidates.sort((s,t)=>(Math.abs(t.a.x-t.b.x)+Math.abs(t.a.y-t.b.y))-(Math.abs(s.a.x-s.b.x)+Math.abs(s.a.y-s.b.y)))[0];
+      if(segment){const axis=segment.a.x===segment.b.x?'x':'y',value=segment.a[axis];
+        const handle=svg('circle',{cx:(segment.a.x+segment.b.x)/2,cy:(segment.a.y+segment.b.y)/2,r:6,class:'route-handle',role:'slider',tabindex:0,'aria-label':'Move relationship bend','aria-valuenow':value});
+        handle.onpointerdown=e=>drag(e,delta=>{bends[key]={axis,value:Math.max(5,value+delta[axis])};});
+        handle.onkeydown=e=>{if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();bends[key]={axis,value:Math.max(5,value+(['ArrowLeft','ArrowUp'].includes(e.key)?-10:10))};markDirty();render();}};
+      }
+    }
+    if(route.warning)svg('title',{},route.warning,path);
     svg('title',{},`${a.tableName}.${a.fieldNames.join(', ')} (${cardinality(a.relation).label}) → ${b.tableName}.${b.fieldNames.join(', ')} (${cardinality(b.relation).label})`,path);
     ends.push([route.first,a.relation],[route.last,b.relation]);
   }
@@ -85,16 +118,7 @@ function render() {
     svg('path',{d:`M 22 ${HEADER_HEIGHT} V ${h}${preferences.types?` M 174 ${HEADER_HEIGHT} V ${h}`:''}`,class:'table-cell-rule'},undefined,g);
     g.onclick=()=>inspect(t.key);
     g.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();inspect(t.key);}};
-    head.onpointerdown=e=>{
-      e.preventDefault();head.setPointerCapture(e.pointerId);
-      const start={x:e.clientX,y:e.clientY,...p},rect=canvas.getBoundingClientRect();
-      head.onpointermove=move=>{
-        p.x=Math.max(5,start.x+(move.clientX-e.clientX)*width/rect.width);
-        p.y=Math.max(5,start.y+(move.clientY-e.clientY)*height/rect.height);
-        g.setAttribute('transform',`translate(${p.x},${p.y})`);
-      };
-      head.onpointerup=()=>{head.onpointermove=null;markDirty();render();};
-    };
+    head.onpointerdown=e=>{const start={...p};drag(e,delta=>{p.x=Math.max(5,start.x+delta.x);p.y=Math.max(5,start.y+delta.y);});};
   }
   for(const [end,relation] of ends)drawEndpoint(end,relation);
 }
@@ -107,22 +131,48 @@ function drawEndpoint(end,relation) {
   else svg('path',{d:`M ${x+21*d} ${y-half} V ${y+half}`,class:'relationship-symbol'},undefined,g);
 }
 function compile() {
-  $('#line-numbers').textContent=source.value.split('\n').map((_,i)=>i+1).join('\n');
+  showDiagnostics([]);
   try {
     const next=parseSchema(source.value); model=next;
     if (!Object.keys(positions).length) layout();
     render();$('#counts').textContent=`${model.tables.length} tables · ${model.refs.length} relationships`;
     status.className='';status.textContent='Schema valid · Changes are processed on this device.';
   } catch(error) {
+    showDiagnostics(diagnostics(error,source.value));
     status.className='error';status.textContent='Fix the DBML to update the diagram: '+errorText(error)+'. Showing the last valid diagram.';
   }
 }
 let debounce;
 source.oninput=()=>{markDirty();clearTimeout(debounce);debounce=setTimeout(compile,250);};
-source.onscroll=()=>$('#line-numbers').scrollTop=source.scrollTop;
+function syncEditorScroll(){
+  $('#line-numbers').scrollTop=source.scrollTop;
+  $('#code-highlights').scrollTop=source.scrollTop;$('#code-highlights').scrollLeft=source.scrollLeft;
+}
+function showDiagnostics(items){
+  $('#problems').hidden=!items.length;$('#problem-count').textContent=`${items.length} DBML error${items.length===1?'':'s'}`;
+  $('#problem-list').replaceChildren();$('#line-numbers').replaceChildren();$('#code-highlights').replaceChildren();
+  source.setAttribute('aria-invalid',String(!!items.length));
+  const lines=source.value.split('\n');let offset=0;
+  lines.forEach((line,i)=>{
+    const number=document.createElement('span'),highlight=document.createElement('span');
+    number.textContent=String(i+1)+'\n';
+    const errors=items.filter(d=>d.line===i+1);
+    if(errors.length){number.className='error-line';number.title=errors.map(d=>d.message).join('\n');}
+    $('#line-numbers').append(number);
+    let cursor=0;
+    for(const d of errors.sort((a,b)=>a.start-b.start)){
+      const start=Math.max(cursor,d.start-offset),end=Math.min(line.length,Math.max(start+1,d.end-offset));
+      highlight.append(document.createTextNode(line.slice(cursor,start)));const mark=document.createElement('mark');mark.textContent=line.slice(start,end)||' ';mark.title=d.message;highlight.append(mark);cursor=end;
+    }
+    highlight.append(document.createTextNode(line.slice(cursor)+'\n'));$('#code-highlights').append(highlight);offset+=line.length+1;
+  });
+  for(const d of items){const button=document.createElement('button');button.textContent=`${d.line}:${d.column}  ${d.message}`;button.onclick=()=>{source.focus();source.setSelectionRange(d.start,d.end);source.scrollTop=Math.max(0,(d.line-3)*22);syncEditorScroll();};$('#problem-list').append(button);}
+  syncEditorScroll();
+}
+source.onscroll=syncEditorScroll;
 $('#project-name').oninput=markDirty;
 $('#search').oninput=render;
-$('#arrange').onclick=()=>{layout();render();markDirty();};
+$('#arrange').onclick=()=>{bends={};layout();render();markDirty();};
 function setZoom(value){zoom=Math.max(.3,Math.min(2,value));render();}
 $('#zoom-in').onclick=()=>setZoom(zoom+.1);$('#zoom-out').onclick=()=>setZoom(zoom-.1);
 $('#fit').onclick=()=>{
@@ -137,7 +187,7 @@ $('#open-project').onclick=()=>navigate('diagram');
 $('#new-project').onclick=()=>{
   if(dirty&&!confirm('Discard unsaved edits and start a new project?'))return;
   source.value='// Your local database schema\nTable example {\n  id uuid [pk]\n}\n';
-  $('#project-name').value='Untitled schema';positions={};selected=null;$('#inspector').hidden=true;compile();markDirty();navigate('diagram');
+  $('#project-name').value='Untitled schema';positions={};bends={};selectedRef=null;selected=null;$('#inspector').hidden=true;compile();markDirty();navigate('diagram');
 };
 function applyPreferences() {
   $('#spacing').value=preferences.spacing;$('#show-types').checked=preferences.types;$('#show-grid').checked=preferences.grid;
@@ -148,7 +198,7 @@ $('#show-types').onchange=()=>{preferences.types=$('#show-types').checked;applyP
 $('#show-grid').onchange=()=>{preferences.grid=$('#show-grid').checked;applyPreferences();markDirty();};
 async function saveProject() {
   $('#save').disabled=true;
-  try {await window.tool.request('save',{name:$('#project-name').value,source:source.value,positions,preferences});dirty=false;$('#save-state').textContent='Saved in this browser';$('#recent-detail').textContent='DBML · Saved preview project';$('#settings-state').textContent='Saved in this browser';}
+  try {const snapshot=JSON.stringify({name:$('#project-name').value,source:source.value,positions,bends,preferences});await window.tool.request('save',JSON.parse(snapshot));if(snapshot===JSON.stringify({name:$('#project-name').value,source:source.value,positions,bends,preferences})){dirty=false;document.body.dataset.dirty='false';$('#save-state').textContent=savedLabel;$('#recent-detail').textContent='DBML · Saved project';$('#settings-state').textContent=savedLabel;}}
   catch(error){$('#save-state').textContent='Save failed: '+error.message;$('#settings-state').textContent='Save failed: '+error.message;}
   finally{$('#save').disabled=false;}
 };
@@ -171,10 +221,11 @@ function refreshExport() {
 function formatHelp() {
   $('#format-help').textContent=$('#format').value==='csv'?'CSV headers become text columns. Data rows are not imported; types and relationships can be defined in DBML.':'Paste schema text or choose a local file, then review it before importing.';
 }
-function exchange(nextMode) {
+function exchange(nextMode,format='dbml') {
   clearTimeout(debounce);compile();
   mode=nextMode;$('#exchange-title').textContent=mode==='import'?'Import schema':'Export schema';
   $('#format').replaceChildren(...(mode==='import'?importFormats:exportFormats).map(([id,label])=>{const option=document.createElement('option');option.value=id;option.textContent=label;return option;}));
+  $('#format').value=format;
   $('#apply-import').hidden=mode!=='import';$('#download').hidden=mode!=='export';$('#file-import').hidden=mode!=='import';
   $('#exchange-text').readOnly=mode==='export';$('#exchange-error').textContent='';$('#schema-file').value='';
   $('#exchange-text').hidden=false;$('#text-label').hidden=false;$('#export-preview').hidden=true;
@@ -182,19 +233,18 @@ function exchange(nextMode) {
   $('#schema-file').value='';
   $('#exchange').showModal();
 }
-$('#import').onclick=()=>exchange('import');$('#export').onclick=()=>exchange('export');
+function formatMenu(nextMode){
+  const menu=$('#exchange-menu');menu.replaceChildren();
+  for(const [format,label] of nextMode==='import'?importFormats:exportFormats){
+    const button=document.createElement('button');button.type='button';button.role='menuitem';button.textContent=label;
+    button.onclick=()=>{menu.hidePopover();if(nextMode==='import')exchange('import',format);else download(format);};menu.append(button);
+  }
+  menu.showPopover();
+  const rect=$('#'+nextMode).getBoundingClientRect();menu.style.top=rect.height?rect.bottom+4+'px':'4px';menu.style.right='8px';
+  menu.querySelector('button').focus();
+}
+$('#import').onclick=()=>formatMenu('import');$('#export').onclick=()=>formatMenu('export');
 $('#format').onchange=()=>{if(mode==='export')refreshExport();else formatHelp();};
-$('#schema-file').onchange=async()=>{
-  const file=$('#schema-file').files[0];if(!file)return;
-  try {
-    if(file.size>10*1024*1024)throw Error('Choose a schema file smaller than 10 MiB.');
-    $('#exchange-text').value=await file.text();importedName=file.name.replace(/\.[^.]+$/,'')||'imported_table';
-    const extension=file.name.split('.').at(-1).toLowerCase();
-    if(['dbml','csv'].includes(extension))$('#format').value=extension;
-    if(extension==='rb')$('#format').value='schemarb';
-    $('#exchange-error').textContent='';formatHelp();
-  }catch(error){$('#exchange-error').textContent='File could not be read: '+error.message;}
-};
 $('#schema-file').onchange=async()=>{
   const file=$('#schema-file').files[0];if(!file)return;
   try {
@@ -212,27 +262,28 @@ $('#apply-import').onclick=()=>{
   try {
     const text=importSchema($('#exchange-text').value,$('#format').value,importedName);
     if(dirty&&!confirm('Replace unsaved schema edits with this import?'))return;
-    source.value=text;positions={};selected=null;$('#inspector').hidden=true;compile();markDirty();$('#exchange').close();
+    source.value=text;positions={};bends={};selectedRef=null;selected=null;$('#inspector').hidden=true;compile();markDirty();$('#exchange').close();
   }catch(error){$('#exchange-error').textContent='Import failed: '+errorText(error);}
 };
-$('#download').onclick=async()=>{
-  const format=$('#format').value;$('#download').disabled=true;
+async function download(format){
+  const feedback=$('#file-status');feedback.hidden=false;feedback.textContent='Preparing export…';
   try {
+    clearTimeout(debounce);parseSchema(source.value);compile();
     const image=['png','pdf','svg'].includes(format);
     const blob=image?await diagramFile(canvas,format):new Blob([exportSchema(source.value,format)],{type:'text/plain;charset=utf-8'});
-    const filename=($('#project-name').value||'schema').replace(/[^a-z0-9_-]/gi,'-');
-    downloadFile(blob,filename+'.'+(image?format:format==='dbml'?'dbml':'sql'));
-    $('#exchange-error').textContent='';
-  }catch(error){$('#exchange-error').textContent='Export failed: '+error.message;}
-  finally{$('#download').disabled=false;}
-};
+    const filename=($('#project-name').value||'schema').replace(/[^a-z0-9_-]/gi,'-')+'.'+(image?format:format==='dbml'?'dbml':'sql');
+    if(window.tool.saveExport){const result=await window.tool.saveExport({filename,bytes:new Uint8Array(await blob.arrayBuffer())});feedback.textContent=`Exported ${result.filename} to Downloads`;}
+    else{downloadFile(blob,filename);feedback.textContent=`Download requested: ${filename}`;}
+  }catch(error){feedback.textContent='Export failed: '+errorText(error);}
+}
+$('#download').onclick=()=>download($('#format').value);
 window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
 (async()=>{
   try {
     const saved=await window.tool.request('load');
     source.value=saved?.source??sample;$('#project-name').value=saved?.name??'Platform starter';
-    positions=saved?.positions??{};preferences={...preferences,...saved?.preferences};
-    if(saved){$('#save-state').textContent='Saved in this browser';$('#recent-detail').textContent='DBML · Saved preview project';}
+    positions=saved?.positions??{};bends=saved?.bends??{};preferences={...preferences,...saved?.preferences};
+    if(saved){$('#save-state').textContent=savedLabel;$('#recent-detail').textContent='DBML · Saved project';}
     compile();applyPreferences();
   } catch(error){source.disabled=true;$('#save').disabled=true;status.className='error';status.textContent='Project could not load. Reopen the preview before editing: '+error.message;}
 })();

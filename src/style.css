@@ -32,3 +32,11 @@ body .workspace>footer{padding:4px 12px;flex-shrink:0}
 #parse-status{padding:3px 4px;flex-shrink:0}
 #inspector{max-height:160px;overflow:auto;flex-shrink:0}
 @media(max-width:700px){body .workspace>main{overflow:auto}#page-diagram{flex:none}.studio{min-height:760px}.preview-label{display:none}}
+
+/* Parser-backed diagnostics share the textarea's exact line metrics. */
+.code-wrap{position:relative}.code-wrap pre,#source{font-family:ui-monospace,SFMono-Regular,Consolas,monospace!important;font-size:12px!important;line-height:22px!important;box-sizing:border-box}
+#line-numbers{width:42px;min-width:42px;flex-shrink:0}#code-highlights{position:absolute;inset:0 0 0 42px;padding:14px 12px!important;text-align:left;border:0;pointer-events:none;overflow:hidden;color:transparent;white-space:pre;tab-size:2}#code-highlights mark{color:transparent;background:#c8312520;text-decoration:underline wavy #c83125;text-underline-offset:3px}#source{position:relative}.error-line{color:#b42318;background:#fee4e2}
+#problems{border-top:1px solid #e7b4ae;padding:6px 10px;max-height:140px;overflow:auto;font-size:12px;background:#fff8f7}#problem-list button{display:block;text-align:left;white-space:normal;color:#a62d24;border:0;background:transparent;padding:4px 0}
+#exchange-menu{position:fixed;inset:auto;margin:0;padding:4px;min-width:205px;border:1px solid var(--rule);border-radius:6px;background:white;box-shadow:0 8px 24px #182e4926}#exchange-menu button{display:block;width:100%;text-align:left;border:0;background:white;padding:8px 12px}#exchange-menu button:hover,#exchange-menu button:focus{background:#edf1f7}
+#file-status{position:fixed;bottom:12px;right:12px;max-width:440px;background:white;border:1px solid var(--rule);padding:10px;border-radius:6px;z-index:10}
+.relation-hit{fill:none;stroke:transparent;stroke-width:12;cursor:pointer}.relation.selected{stroke:#14458f;stroke-width:2.5}.route-handle{fill:white;stroke:#14458f;stroke-width:2;cursor:move}.table-head,#diagram{touch-action:none}

@@ -1,10 +1,11 @@
 import Papa from 'papaparse';
 import { Parser, importer, exporter } from '@dbml/core';
 export function parseSchema(source) {
-  const db = Parser.parse(source, 'dbmlv2').export();
+  const parsed = Parser.parse(source, 'dbmlv2');
+  const db = parsed.export();
   return {
-    tables: db.schemas.flatMap(s => s.tables.map(t => ({...t, schema: s.name, key: `${s.name}.${t.name}`}))),
-    refs: db.schemas.flatMap(s => s.refs.map(r => ({...r, endpoints: r.endpoints.map(e => ({...e, key: `${e.schemaName || s.name}.${e.tableName}`}))}))),
+    tables: db.schemas.flatMap(s => s.tables.map(t => ({...t, schema: s.name, key: `${s.name}.${t.name}`, sourceRange: parsed.schemas.find(x=>x.name===s.name)?.tables.find(x=>x.name===t.name)?.token}))),
+    refs: db.schemas.flatMap(s => s.refs.map((r,i) => ({...r, sourceRange: parsed.schemas.find(x=>x.name===s.name)?.refs[i]?.token, endpoints: r.endpoints.map(e => ({...e, key: `${e.schemaName || s.name}.${e.tableName}`}))}))),
   };
 }
 export const importFormats = [['dbml','DBML'],['postgres','PostgreSQL SQL'],['mysql','MySQL SQL'],['mssql','SQL Server SQL'],['oracle','Oracle SQL'],['snowflake','Snowflake SQL'],['schemarb','Rails schema.rb'],['csv','CSV headers → table']];
@@ -32,4 +33,14 @@ export function exportSchema(text, format) {
 }
 export function errorText(error) {
   return error.diags?.map(d => `${d.location?.start?.line ? `Line ${d.location.start.line}: ` : ''}${d.message}`).join(' · ') || error.message || String(error);
+}
+
+export function diagnostics(error, source) {
+  return (error.diags?.length ? error.diags : [{message:error.message || String(error)}]).map(d => {
+    const line=Math.max(1,d.location?.start?.line || 1), column=Math.max(1,d.location?.start?.column || 1);
+    const lines=source.split('\n'), offset=lines.slice(0,line-1).reduce((n,l)=>n+l.length+1,0)+column-1;
+    const end=d.location?.end;
+    const endOffset=end ? lines.slice(0,end.line-1).reduce((n,l)=>n+l.length+1,0)+end.column-1 : offset+1;
+    return {message:d.message,line,column,start:Math.min(source.length,offset),end:Math.min(source.length,Math.max(offset+1,endOffset))};
+  });
 }

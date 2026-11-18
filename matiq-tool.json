@@ -14,7 +14,9 @@
     "win32-arm64",
     "linux-x64"
   ],
-  "capabilities": [],
+  "capabilities": [
+    "files"
+  ],
   "adapter": "src/tool.cjs",
   "workspace": "src/index.html",
   "preload": "src/preload.cjs"

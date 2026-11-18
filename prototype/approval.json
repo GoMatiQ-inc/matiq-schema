@@ -1,4 +1,7 @@
 {
-  "status": "draft",
-  "instruction": "Review standalone and suite prototypes with the owner. Record explicit approval before implementing or packaging changes."
+  "status": "approved",
+  "approvedBy": "Owner",
+  "approvalText": "after those adjustments the prototype is approved. Build the app.",
+  "approvedAt": "2026-11-18T22:37:52.457Z",
+  "digest": "128e9aa277ba715754dac6d241e8f6128a1d61d07b4aa82b0964447ba41822f5"
 }

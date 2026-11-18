@@ -11,6 +11,7 @@ export function serializeDiagram(svg) {
     clones[i].setAttribute('font-family','Arial, sans-serif');
     clones[i].removeAttribute('tabindex');
   }
+  copy.querySelectorAll('.route-handle,.relation-hit').forEach(e=>e.remove());
   const background=document.createElementNS('http://www.w3.org/2000/svg','rect');
   for(const [key,value] of Object.entries({x,y,width,height,fill:'white'}))background.setAttribute(key,value);
   copy.prepend(background);

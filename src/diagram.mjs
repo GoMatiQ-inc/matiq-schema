@@ -34,7 +34,7 @@ export function routeOrthogonal(start,end,rects) {
   }
   throw Error('Separate overlapping tables or choose Auto layout to route their relationships.');
 }
-export function connection(a,b,tables,positions,offsetA=0,offsetB=0) {
+export function connection(a,b,tables,positions,offsetA=0,offsetB=0,bend=null) {
   const ta=tables.find(t=>t.key===a.key),tb=tables.find(t=>t.key===b.key),pa=positions[a.key],pb=positions[b.key];
   let da=1,db=1;
   if(pa.x+TABLE_WIDTH+40<=pb.x){da=1;db=-1;}
@@ -42,8 +42,11 @@ export function connection(a,b,tables,positions,offsetA=0,offsetB=0) {
   const first={x:pa.x+(da===1?TABLE_WIDTH:0),y:pa.y+fieldY(ta,a.fieldNames[0])+offsetA,direction:da};
   const last={x:pb.x+(db===1?TABLE_WIDTH:0),y:pb.y+fieldY(tb,b.fieldNames[0])+offsetB,direction:db};
   const start={x:first.x+da*32,y:first.y},end={x:last.x+db*32,y:last.y};
-  let route=routeOrthogonal(start,end,tables.map(t=>({...positions[t.key],width:TABLE_WIDTH,height:tableHeight(t)})));
+  let route, warning;
+  if(bend)route=bend.axis==='x'?[start,{x:bend.value,y:start.y},{x:bend.value,y:end.y},end]:[start,{x:start.x,y:bend.value},{x:end.x,y:bend.value},end];
+  else try {route=routeOrthogonal(start,end,tables.map(t=>({...positions[t.key],width:TABLE_WIDTH,height:tableHeight(t)})));}
+  catch(error){warning=error.message;const x=Math.max(start.x,end.x)+24;route=[start,{x,y:start.y},{x,y:end.y},end];}
   if(a.key===b.key&&start.y===end.y)route=[start,{x:start.x+24,y:start.y},{x:start.x+24,y:start.y-18},{x:end.x,y:end.y-18},end];
   const points=[first,...route,last];
-  return {first,last,path:points.map((p,i)=>`${i?'L':'M'} ${p.x} ${p.y}`).join(' ')};
+  return {first,last,points,warning,path:points.map((p,i)=>`${i?'L':'M'} ${p.x} ${p.y}`).join(' ')};
 }
