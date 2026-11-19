@@ -4,3 +4,5 @@ dist/
 .prototype/
 prototype/registration.local.json
 prototype/last-build.local.json
+src/app.js
+src/app.js.LEGAL.txt

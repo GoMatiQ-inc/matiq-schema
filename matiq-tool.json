@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "id": "com.matiq.schema",
-  "name": "Schema",
-  "description": "A private local workspace.",
+  "name": "DBSchema",
+  "description": "Design database schemas locally. Edit DBML and explore tables and relationships.",
   "version": "0.1.0",
   "sdk": 1,
   "dataVersion": 1,
@@ -14,7 +14,9 @@
     "win32-arm64",
     "linux-x64"
   ],
-  "capabilities": [],
+  "capabilities": [
+    "files"
+  ],
   "adapter": "src/tool.cjs",
   "workspace": "src/index.html",
   "preload": "src/preload.cjs"

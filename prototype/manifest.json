@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "id": "com.matiq.schema",
-  "name": "Schema",
+  "name": "DBSchema",
   "workspace": "src/index.html",
   "roots": [
     "src"
